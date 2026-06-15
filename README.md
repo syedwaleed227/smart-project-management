@@ -4,6 +4,17 @@ A complete plan for a multi-department, SaaS-style project, finance, and operati
 
 This repository documents the full product blueprint so that a **developer**, a **UI/UX designer**, and a **business owner** can all understand the system and start planning the product.
 
+## Repository layout
+
+| Path | What it is |
+|------|-----------|
+| [`docs/`](docs) | The full product blueprint (23 sections) |
+| [`supabase/`](supabase) | Runnable database: migrations, RLS, audit trigger, seed |
+| [`web/`](web) | The application — Next.js 14 + TypeScript + Tailwind + Supabase |
+
+To run the app: apply the database (`supabase db reset`) then start the web app
+(`cd web && npm install && npm run dev`). See [`web/README.md`](web/README.md).
+
 ## Documents
 
 | Document | Purpose |
