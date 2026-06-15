@@ -16,16 +16,24 @@ A pragmatic, scalable stack that a small team can build on and grow.
 ## Backend
 - **Option A (recommended):** Node.js + **NestJS** (TypeScript) — structured, modular, fits RBAC/workflow domain; or
 - **Option B:** Python + **Django/DRF** or **FastAPI** — strong for finance/reporting and AI integration.
-- **API:** REST (OpenAPI) primary; GraphQL optional for complex dashboards.
-- **Auth:** JWT + refresh tokens, 2FA (TOTP), later SSO via OAuth/SAML (Auth0/Keycloak).
-- **Background jobs:** queue (BullMQ/Redis or Celery) for reminders, escalations, reports, notifications.
+- **API:** Supabase auto-generates a REST + Realtime API directly from the schema (PostgREST) — good for straightforward CRUD. Put complex/finance/approval logic behind a thin **NestJS/FastAPI** service (or Supabase Edge Functions) that uses the service-role key. REST (OpenAPI) primary; GraphQL optional.
+- **Auth:** **Supabase Auth** — JWT + refresh tokens, 2FA (MFA/TOTP), later SSO via OAuth/SAML. JWT `auth.uid()` + role/department claims drive RLS.
+- **Background jobs:** `pg_cron` + `pgmq` in Supabase, or an external queue (BullMQ/Redis, Celery) for reminders, escalations, reports, notifications.
 
-## Database & storage
-- **Primary DB:** **PostgreSQL** — relational integrity is essential for finance + approvals + audit.
-- **Cache/queue:** Redis.
-- **Search:** PostgreSQL full-text for MVP; Elasticsearch/OpenSearch later for smart search.
-- **File storage:** S3-compatible object storage (AWS S3 / Cloudflare R2 / MinIO), encrypted at rest.
-- **Audit logs:** append-only table (+ optional WORM/archival).
+## Database & storage — **Supabase**
+We use **Supabase** as the data platform. It is managed **PostgreSQL** plus a set of services that map directly onto this system's needs:
+
+- **Primary DB:** Supabase Postgres — relational integrity is essential for finance + approvals + audit. Use migrations (Supabase CLI) for schema in `supabase/migrations`.
+- **Row Level Security (RLS):** enforce **RBAC + department scoping at the database layer** — policies keep users to their department/owned rows even if the API is bypassed. This is a major win for the permissions matrix.
+- **Auth:** **Supabase Auth** — email/password, **2FA (MFA/TOTP)**, and social/SSO providers (OAuth) later. Issues JWTs that carry the user id used by RLS policies (`auth.uid()`); store role/department claims for policy checks.
+- **Storage:** **Supabase Storage** (S3-compatible) for all documents/attachments, with bucket policies tied to the same RLS model; encrypted at rest.
+- **Realtime:** **Supabase Realtime** for live dashboards, notification badges, Kanban updates — replaces a separate WebSocket layer for most needs.
+- **Edge Functions:** **Supabase Edge Functions** (Deno) for server-side logic that must run with elevated rights (approval routing, notification fan-out, scheduled jobs via `pg_cron`).
+- **Search:** Postgres full-text + **`pgvector`** (built into Supabase) for smart/semantic search later.
+- **Cache/queue:** Redis (Upstash) or `pgmq`/`pg_cron` in Postgres for reminders, escalations, and report jobs.
+- **Audit logs:** append-only table with Postgres triggers capturing old→new values automatically (+ optional archival).
+
+> **Why Supabase fits:** it collapses Postgres, auth+2FA, file storage, realtime, and DB-level access control into one managed platform — ideal for an MVP team while still being standard Postgres you can scale or self-host later.
 
 ## Cloud & infra
 - **Hosting:** AWS / GCP / Azure (or Vercel for the Next.js frontend + managed backend).
@@ -58,9 +66,11 @@ A pragmatic, scalable stack that a small team can build on and grow.
 | Web | Next.js + TypeScript + Tailwind |
 | Mobile | React Native (Expo) |
 | Backend | NestJS (Node/TS) or FastAPI/Django (Python) |
-| Database | PostgreSQL + Redis |
-| Files | S3-compatible storage |
-| Search | Postgres FTS → OpenSearch/pgvector |
+| Database | **Supabase** (managed Postgres) + RLS + Realtime |
+| Auth | **Supabase Auth** (JWT, 2FA/MFA, OAuth/SSO later) |
+| Files | **Supabase Storage** (S3-compatible) |
+| Search | Postgres FTS → `pgvector` (in Supabase) |
+| Server logic | NestJS/FastAPI service + Supabase Edge Functions |
 | Notifications | SES/SendGrid + Twilio + Slack + FCM |
 | AI | Anthropic Claude API (Opus 4.8 / Sonnet 4.6) |
-| Cloud | AWS/GCP + Docker + GitHub Actions + Terraform |
+| Cloud | Supabase Cloud (or self-host) + Vercel + GitHub Actions |

@@ -37,4 +37,5 @@ The **Smart Project Management System (SPMS)** is a centralized SaaS platform th
 
 - **Core value:** accountability, financial control, and visibility across departments.
 - **Primary users:** CEO/Owner, Project Managers, Finance, HR, Department Heads, Team Leads, Employees, plus external Clients, Vendors, and Auditors.
+- **Data platform:** [Supabase](docs/22-tech-stack.md) (managed PostgreSQL + Auth/2FA + Storage + Realtime), with Row Level Security enforcing role and department access at the database layer.
 - **Build order:** Start with the [MVP](docs/20-mvp.md) (auth, projects, tasks, basic approvals, simple finance, dashboards), then layer on the [future features](docs/21-future-version.md).

@@ -1,11 +1,18 @@
 # 16. Database Structure
 
-Relational core (PostgreSQL recommended). `id` is UUID/PK; timestamps (`created_at`, `updated_at`, `created_by`) on all tables. Designed multi-tenant-ready via an optional `tenant_id` (company) on every table.
+Relational core on **Supabase (managed PostgreSQL)**. `id` is UUID/PK; timestamps (`created_at`, `updated_at`, `created_by`) on all tables. Designed multi-tenant-ready via an optional `tenant_id` (company) on every table.
+
+## Supabase conventions
+- **Identity:** Supabase manages the auth identity in `auth.users`. Our **`users`** table here is a public **profile** row keyed `id = auth.users.id` (1:1), holding name, phone, status, etc. App data references `users.id`.
+- **Row Level Security (RLS):** enabled on every table. Policies use `auth.uid()` plus the user's role/department (read from `user_roles`/JWT claims) to enforce the [permissions matrix](19-permissions-matrix.md) at the DB layer — e.g., an Employee only sees rows in their department or rows they own; Finance sees financial tables; external Client/Vendor portals are restricted to their linked rows.
+- **Audit:** a generic Postgres **trigger** on important tables writes old→new diffs into `audit_logs` automatically, so the trail can't be bypassed by the API.
+- **Migrations:** schema lives in `supabase/migrations` (Supabase CLI). Storage buckets (documents) follow the same RLS-style policies.
+- **Realtime:** subscribe to changes on `tasks`, `notifications`, `approvals` for live dashboards/badges.
 
 ## Core tables / collections
 
 ### Identity & org
-- **users** `(id, name, email, phone, password_hash, status, twofa_enabled, last_login)`
+- **users** (profile; `id` = `auth.users.id`) `(id, name, email, phone, status, last_login)` — credentials, 2FA/MFA, and sessions are handled by **Supabase Auth** in `auth.users`, not stored here.
 - **roles** `(id, name, description, is_system)`
 - **permissions** `(id, key, description)`
 - **role_permissions** `(role_id, permission_id)`
@@ -67,4 +74,4 @@ approvals ─< approval_steps ; approvals ─*─ workflows
 ANY entity ─< comments, documents, notifications, audit_logs (polymorphic entity_type+entity_id)
 ```
 
-> **Note on NoSQL option:** If using MongoDB instead, model the same aggregates as collections; embed small child lists (budget_lines, approval_steps, agenda_items) inside parents, and reference large/shared entities (users, projects) by id. The relational model above is the recommended default for the strong consistency finance/approvals need.
+> **Implementation note:** This relational model is implemented directly as Supabase Postgres tables with RLS policies per table — the strong consistency that finance/approvals/audit need comes for free. (A NoSQL/MongoDB port is possible but not recommended here, since it would give up the DB-level access control and referential integrity Supabase provides.)

@@ -5,10 +5,10 @@ Goal: a usable, sellable first release that delivers the core value — **organi
 ## MVP scope (build first)
 
 ### Foundation
-- Authentication + **2FA**, password reset.
-- **RBAC** with core roles: Super Admin, CEO, PM, Finance Manager, Department Head, Team Lead, Employee. (Client/Vendor portals → Phase 2.)
+- **Supabase Auth** + **2FA (MFA/TOTP)**, password reset.
+- **RBAC** with core roles enforced via **Supabase Row Level Security**: Super Admin, CEO, PM, Finance Manager, Department Head, Team Lead, Employee. (Client/Vendor portals → Phase 2.)
 - **Departments** (built-in templates, basic create/assign).
-- **Audit log** (create/edit/approve on key entities) — important from day one.
+- **Audit log** via Postgres triggers (create/edit/approve on key entities) — important from day one.
 
 ### Projects & tasks
 - Project CRUD: name, department, owner, dates, status, priority, category.
@@ -39,7 +39,7 @@ Goal: a usable, sellable first release that delivers the core value — **organi
 - Core reports: project progress, budget vs actual, task completion, approval pending, expense.
 
 ### Tech baseline
-- Web app (responsive), single backend + PostgreSQL, cloud hosting, object storage for files. See [Tech Stack](22-tech-stack.md).
+- Web app (responsive) on Next.js + a thin backend service, with **Supabase** (Postgres + Auth + Storage + Realtime + RLS) as the data platform. See [Tech Stack](22-tech-stack.md).
 
 ## Explicitly deferred from MVP
 Client & vendor portals · purchase orders / petty cash / payroll integration · WhatsApp/SMS/Slack channels · all AI features · Gantt/critical path · advanced conditional/parallel approvals + auto-escalation · mobile apps · SSO. (See [Future Version](21-future-version.md).)
