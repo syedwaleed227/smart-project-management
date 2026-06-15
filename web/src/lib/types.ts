@@ -114,6 +114,16 @@ export interface Meeting {
   status: string;
 }
 
+export interface Notification {
+  id: string;
+  type: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  message: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
 export type RoleName =
   | "Super Admin"
   | "Company Owner"

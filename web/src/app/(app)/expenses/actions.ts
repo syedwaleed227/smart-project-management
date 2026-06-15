@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-// Amount above which an expense must be routed for approval. In a full build
-// this comes from the department's approval thresholds / workflow conditions.
+// Amount above which an expense must be routed for approval. Below this it is
+// auto-approved; above it, the database workflow engine (start_approval) picks
+// the matching workflow and routes it to the right approvers.
 const AUTO_APPROVAL_THRESHOLD = 1000;
 
 export async function createExpense(formData: FormData) {
@@ -20,6 +21,7 @@ export async function createExpense(formData: FormData) {
     throw new Error("Enter a valid amount");
 
   const project_id = nullable(formData.get("project_id"));
+  const department_id = nullable(formData.get("department_id"));
   const needsApproval = amount > AUTO_APPROVAL_THRESHOLD;
 
   const { data: expense, error } = await supabase
@@ -30,7 +32,7 @@ export async function createExpense(formData: FormData) {
       category: nullable(formData.get("category")),
       description: nullable(formData.get("description")),
       project_id,
-      department_id: nullable(formData.get("department_id")),
+      department_id,
       requester_id: user.id,
       status: needsApproval ? "pending_approval" : "approved",
     })
@@ -38,23 +40,23 @@ export async function createExpense(formData: FormData) {
     .single();
   if (error) throw new Error(error.message);
 
-  // Open an approval record so it shows up in the Approval Center.
+  // Hand off to the workflow engine, which creates the approval + steps and
+  // notifies the first approvers.
   if (needsApproval) {
-    const { data: approval } = await supabase
-      .from("approvals")
-      .insert({
-        entity_type: "expense",
-        entity_id: expense.id,
-        status: "pending",
-        current_step: 1,
-        requested_by: user.id,
-      })
-      .select("id")
-      .single();
-    if (approval) {
+    const { data: approvalId, error: rpcError } = await supabase.rpc(
+      "start_approval",
+      {
+        p_entity_type: "expense",
+        p_entity_id: expense.id,
+        p_amount: amount,
+        p_department_id: department_id,
+      },
+    );
+    if (rpcError) throw new Error(rpcError.message);
+    if (approvalId) {
       await supabase
         .from("expenses")
-        .update({ approval_id: approval.id })
+        .update({ approval_id: approvalId })
         .eq("id", expense.id);
     }
   }

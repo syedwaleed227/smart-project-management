@@ -1,4 +1,5 @@
 import { requireUser, isAdmin, isFinance } from "@/lib/auth";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Sidebar, type NavItem } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 
@@ -8,6 +9,11 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
+  const supabase = createSupabaseServerClient();
+  const { count: unread } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null);
 
   const items: NavItem[] = [
     { href: "/", label: "Dashboard", icon: "▣" },
@@ -29,7 +35,7 @@ export default async function AppLayout({
     <div className="flex h-screen overflow-hidden">
       <Sidebar items={items} userName={user.name} roles={user.roles} />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar title="Workspace" />
+        <TopBar title="Workspace" unread={unread ?? 0} />
         <main className="flex-1 overflow-y-auto px-6 py-6">{children}</main>
       </div>
     </div>

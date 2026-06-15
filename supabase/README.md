@@ -17,7 +17,11 @@ supabase/
 │   ├── 20260615000006_governance.sql        clients/vendors, meetings, approvals,
 │   │                                        documents, notifications, HR, audit_logs
 │   ├── 20260615000007_audit_trigger.sql     generic who/what/when/old→new audit
-│   └── 20260615000008_rls.sql               enable RLS + all policies + auth hooks
+│   ├── 20260615000008_rls.sql               enable RLS + all policies + auth hooks
+│   ├── 20260615000009_bootstrap_first_admin.sql  first signup → Super Admin
+│   └── 20260615000010_workflow_and_notifications.sql  approval engine + notifications
+├── functions/
+│   └── notify-dispatch/index.ts             Edge Function: external-channel delivery
 └── seed.sql                                 roles, permissions, departments, workflows
 ```
 
@@ -63,14 +67,36 @@ supabase db push             # applies migrations to the linked project
   client/vendor it represents; `current_client_ids()` / `current_vendor_ids()`
   scope portal access to only their own projects, invoices, and documents.
 
+## Approval workflow engine (migration 0010)
+
+Implemented in the database so it is transactional and testable. Two RPCs are
+exposed to the app via PostgREST:
+
+- **`start_approval(entity_type, entity_id, amount, department_id)`** — picks the
+  most specific matching active workflow (via `app.workflow_matches` on
+  `workflows.conditions`), creates the `approvals` row and its `approval_steps`,
+  and notifies the first approvers. Falls back to a single Department-Head step
+  if nothing matches.
+- **`decide_approval_step(approval_id, decision, reason)`** — authorizes the
+  caller against the current step's `approver_ref` (role / specific user /
+  requester's manager), records the decision, handles **parallel quorum** and
+  **sequential advancement**, applies the outcome to the linked entity
+  (expense/leave/budget/PR/invoice), and fires accept/reject notifications.
+
+## Notifications
+
+- `app.notify(...)` writes an in-app notification (status `sent`).
+- Triggers: **task assigned** (`tasks`), **budget exceeded** (`expenses` when
+  approved spend ≥ approved project budget). The workflow engine emits
+  **approval pending / accepted / rejected**.
+- External channels (email/SMS/WhatsApp/Slack) are delivered by the
+  `notify-dispatch` Edge Function on a `pg_cron` schedule.
+
 ## Where to refine next
 
-These policies are a secure, working baseline. In the application / Edge Function
-layer you should still enforce:
-
-- **Amount thresholds** for approvals (policies allow staff to act; the workflow
-  engine decides *who* must approve based on `workflows.conditions`).
 - **Fine-grained document sharing** for `client_shared` / `vendor_shared` files
-  (narrow to the specific linked client/vendor).
-- **Notification fan-out, reminders, and auto-escalation** via `pg_cron` +
-  Edge Functions.
+  (narrow to the specific linked client/vendor in the app layer).
+- **Auto-escalation** on SLA breach (`approval_steps.sla_hours` / `escalate_to`
+  are stored; wire a `pg_cron` job to escalate and re-notify).
+- **Per-user channel preferences** (`notification_preferences`) to enqueue email
+  rows in addition to in-app.

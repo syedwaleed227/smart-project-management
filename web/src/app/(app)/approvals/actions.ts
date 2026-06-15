@@ -17,39 +17,15 @@ export async function decideApproval(formData: FormData) {
   if (!approvalId || !["approved", "rejected"].includes(decision))
     throw new Error("Invalid approval decision");
 
-  const { data: approval, error } = await supabase
-    .from("approvals")
-    .update({ status: decision })
-    .eq("id", approvalId)
-    .select("entity_type, entity_id")
-    .single();
-  if (error) throw new Error(error.message);
-
-  // Reflect the decision on the linked entity.
-  if (approval?.entity_type === "expense") {
-    await supabase
-      .from("expenses")
-      .update({ status: decision === "approved" ? "approved" : "rejected" })
-      .eq("id", approval.entity_id);
-  } else if (approval?.entity_type === "leave") {
-    await supabase
-      .from("leaves")
-      .update({ status: decision === "approved" ? "approved" : "rejected" })
-      .eq("id", approval.entity_id);
-  }
-
-  // Record the decision on a step row for the approval history.
-  await supabase.from("approval_steps").insert({
-    approval_id: approvalId,
-    position: 1,
-    type: "sequential",
-    approver_ref: { kind: "user", value: user.id },
-    status: decision,
-    decided_by: user.id,
-    decision,
-    reason: reason || null,
-    decided_at: new Date().toISOString(),
+  // The workflow engine authorizes the caller, records the step decision,
+  // advances/closes the approval, applies the outcome to the linked entity,
+  // and fires notifications — all transactionally.
+  const { error } = await supabase.rpc("decide_approval_step", {
+    p_approval: approvalId,
+    p_decision: decision,
+    p_reason: reason || null,
   });
+  if (error) throw new Error(error.message);
 
   revalidatePath("/approvals");
   revalidatePath("/expenses");
