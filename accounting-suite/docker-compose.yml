@@ -1,0 +1,26 @@
+# Local, self-hosted PostgreSQL for the Smart Accounting Suite.
+# Runs entirely on your own machine / physical server — no cloud dependency.
+# Data is persisted to the named volume `accounting_pgdata` on the host.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: accounting_suite_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: accounting
+      POSTGRES_PASSWORD: accounting
+      POSTGRES_DB: accounting_suite
+    ports:
+      # Exposed on the host so the Next.js app (or other LAN machines) can connect.
+      - "5432:5432"
+    volumes:
+      - accounting_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U accounting -d accounting_suite"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  accounting_pgdata:
+    driver: local

@@ -1,0 +1,319 @@
+// Smart Accounting Suite — data model
+// Self-hosted PostgreSQL. Run `npm run setup` to create the schema + seed data.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  PARTNER // firm owner / signing partner
+  MANAGER // engagement manager
+  ACCOUNTANT // bookkeeping & accounts prep
+  AUDITOR // audit team
+  TAX_AGENT // corporate tax & VAT
+  LEGAL // legal / corporate services
+  CLIENT // external client portal user
+}
+
+enum ServiceLine {
+  BOOKKEEPING
+  ACCOUNTING
+  AUDIT
+  CORP_TAX_REGISTRATION
+  CORP_TAX_FILING
+  CORP_TAX_DEREGISTRATION
+  VAT_REGISTRATION
+  VAT_FILING
+  VAT_DEREGISTRATION
+  LEGAL
+}
+
+enum EngagementStatus {
+  PLANNING
+  IN_PROGRESS
+  PENDING_CLIENT
+  REVIEW
+  FILED
+  COMPLETED
+  ON_HOLD
+  CANCELLED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  REVIEW
+  DONE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum DeadlineKind {
+  VAT_RETURN
+  CORP_TAX_RETURN
+  CORP_TAX_REGISTRATION
+  AUDIT_SUBMISSION
+  ACCOUNTS_FILING
+  LICENSE_RENEWAL
+  OTHER
+}
+
+enum DeadlineStatus {
+  UPCOMING
+  DUE_SOON
+  OVERDUE
+  SUBMITTED
+  CLOSED
+}
+
+enum NotificationType {
+  DEADLINE
+  ASSIGNMENT
+  MENTION
+  STATUS_CHANGE
+  AI_INSIGHT
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(ACCOUNTANT)
+  title        String?
+  avatarColor  String   @default("#3366ff")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  managedEngagements Engagement[]   @relation("EngagementManager")
+  assignedTasks      Task[]         @relation("TaskAssignee")
+  createdTasks       Task[]         @relation("TaskCreator")
+  comments           Comment[]
+  timeEntries        TimeEntry[]
+  notifications      Notification[]
+  documents          Document[]
+  activities         Activity[]
+}
+
+// ---------------------------------------------------------------------------
+// Clients
+// ---------------------------------------------------------------------------
+
+model Client {
+  id              String   @id @default(cuid())
+  name            String
+  legalName       String?
+  industry        String?
+  trn             String? // VAT / Tax Registration Number
+  corporateTaxId  String?
+  jurisdiction    String   @default("UAE")
+  fiscalYearEnd   String? // e.g. "12-31"
+  contactName     String?
+  contactEmail    String?
+  contactPhone    String?
+  riskLevel       RiskLevel @default(LOW)
+  notes           String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  engagements Engagement[]
+  deadlines   ComplianceDeadline[]
+  documents   Document[]
+}
+
+// ---------------------------------------------------------------------------
+// Engagements (a unit of work for a client on one service line)
+// ---------------------------------------------------------------------------
+
+model Engagement {
+  id          String           @id @default(cuid())
+  reference   String           @unique // e.g. ENG-2026-0001
+  title       String
+  serviceLine ServiceLine
+  status      EngagementStatus @default(PLANNING)
+  priority    Priority         @default(MEDIUM)
+  riskLevel   RiskLevel        @default(LOW)
+
+  periodLabel String? // e.g. "Q1 2026", "FY2025"
+  startDate   DateTime?
+  dueDate     DateTime?
+  filedDate   DateTime?
+
+  budgetHours Float?
+  feeAmount   Float?
+  currency    String  @default("AED")
+  progress    Int     @default(0) // 0-100, derived from tasks
+
+  clientId  String
+  client    Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  managerId String?
+  manager   User?  @relation("EngagementManager", fields: [managerId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks       Task[]
+  deadlines   ComplianceDeadline[]
+  documents   Document[]
+  comments    Comment[]
+  timeEntries TimeEntry[]
+  activities  Activity[]
+
+  @@index([status])
+  @@index([serviceLine])
+}
+
+// ---------------------------------------------------------------------------
+// Tasks (collaborative work items inside an engagement)
+// ---------------------------------------------------------------------------
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+  priority    Priority   @default(MEDIUM)
+  dueDate     DateTime?
+  orderIndex  Int        @default(0)
+  aiGenerated Boolean    @default(false)
+
+  engagementId String
+  engagement   Engagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  assigneeId   String?
+  assignee     User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  creatorId    String?
+  creator      User?      @relation("TaskCreator", fields: [creatorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  comments Comment[]
+
+  @@index([engagementId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Compliance calendar — recurring statutory deadlines
+// ---------------------------------------------------------------------------
+
+model ComplianceDeadline {
+  id        String         @id @default(cuid())
+  title     String
+  kind      DeadlineKind
+  status    DeadlineStatus @default(UPCOMING)
+  dueDate   DateTime
+  periodLabel String?
+  notes     String?
+
+  clientId     String
+  client       Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  engagementId String?
+  engagement   Engagement? @relation(fields: [engagementId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([dueDate])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Collaboration
+// ---------------------------------------------------------------------------
+
+model Comment {
+  id        String   @id @default(cuid())
+  body      String
+  createdAt DateTime @default(now())
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id])
+
+  engagementId String?
+  engagement   Engagement? @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  taskId       String?
+  task         Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  name      String
+  category  String? // e.g. "Trial Balance", "VAT Working", "Audit Evidence"
+  fileType  String?
+  sizeBytes Int?
+  url       String? // local path / object reference
+  createdAt DateTime @default(now())
+
+  uploadedById String?
+  uploadedBy   User?   @relation(fields: [uploadedById], references: [id])
+  clientId     String?
+  client       Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  engagementId String?
+  engagement   Engagement? @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+}
+
+model TimeEntry {
+  id        String   @id @default(cuid())
+  minutes   Int
+  note      String?
+  date      DateTime @default(now())
+
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  engagementId String
+  engagement   Engagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  title     String
+  body      String?
+  read      Boolean          @default(false)
+  link      String?
+  createdAt DateTime         @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  action    String
+  detail    String?
+  createdAt DateTime @default(now())
+
+  userId       String?
+  user         User?       @relation(fields: [userId], references: [id])
+  engagementId String?
+  engagement   Engagement? @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+
+  @@index([engagementId])
+}
