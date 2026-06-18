@@ -11,6 +11,8 @@ const NAV = [
   { href: "/compliance", label: "Compliance Calendar", icon: "📅" },
   { href: "/assistant", label: "AI Co-pilot", icon: "🤖" },
   { href: "/team", label: "Team", icon: "👥" },
+  { href: "/admin/users", label: "User Admin", icon: "🔐" },
+  { href: "/account", label: "My Account", icon: "⚙️" },
 ];
 
 export function Sidebar() {
